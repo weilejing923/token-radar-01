@@ -1,4 +1,4 @@
-// Token Launch Radar — model v2 (peer-multiple model)
+// Token Launch Radar — model v3 (peer-multiple model)
 //
 // One sealed DefiLlama snapshot in, one ranked board out. No protocol name is
 // ever special-cased: every figure below is derived from the snapshot itself.
@@ -7,9 +7,18 @@
 //   implied = TVL x peerMultiple x growthMult x maturityMult x breadthMult
 // - peerMultiple: for the protocol's own category, the median market-cap / TVL
 //   ratio of the snapshot's live-token protocols in that category (clamped to
-//   0.12..1.50). A category with fewer than 3 live peers falls back to the
-//   global live median. This prices a Dex like a Dex and a lender like a
-//   lender, instead of applying one flat multiple to everything.
+//   0.12..1.50). This prices a Dex like a Dex and a lender like a lender,
+//   instead of applying one flat multiple to everything. The peer pool is
+//   the snapshot's live OPERATING protocols: the same wrapper classes the
+//   board refuses to rank (exchanges, bridges, liquid staking/restaking
+//   wrappers) are excluded from the pool too, because a launch multiple
+//   should come from businesses, not from wrappers of other tokens. When a
+//   category has fewer than 3 live peers in that pool, the multiple falls
+//   back to the pool's global median. (A size-band fallback was tried and
+//   dropped: at the top of the book the band is mostly restaking giants
+//   whose tokens trade near 0.03x TVL, which priced curators against
+//   wrappers.) Every row records which basis priced it: peer_basis is
+//   "category" or "global".
 // - growthMult: 1 + clamp(change_7d, -50, +100)/100 x 0.55. One hot or cold
 //   week tilts the value, it never decides it.
 // - maturityMult: 0.65 + min(ageDays, 1095)/1095 x 0.35, where ageDays is how
@@ -78,7 +87,7 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 5,
 };
 
-export const MODEL_VERSION = 'radar-peer-2';
+export const MODEL_VERSION = 'radar-peer-3';
 
 export const LIVE_ROWS = 24;
 
@@ -107,6 +116,7 @@ export interface BoardRow {
   model: {
     peer_multiple: number;
     peer_peers: number;
+    peer_basis: 'category' | 'global';
     growth_pct: number;
     growth_multiplier: number;
     maturity_multiplier: number;
@@ -129,6 +139,8 @@ export interface RadarRow {
   on_watchlist: boolean;
   implied_value_usd: number;
   peer_multiple: number;
+  peer_peers: number;
+  peer_basis: 'category' | 'global';
   growth_multiplier: number;
   maturity_multiplier: number;
   breadth_multiplier: number;
@@ -217,35 +229,75 @@ function median(values: number[]): number {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/** Peer multiples per category, computed once from the snapshot's live set. */
+export interface LivePeer {
+  tvl_usd: number;
+  ratio: number;
+}
+
+/**
+ * The peer pool: every live-token OPERATING protocol with a usable
+ * market-cap / TVL ratio. Wrapper classes (the same set isRankable refuses
+ * to rank) never price anyone: their tokens are claims on other assets.
+ */
+export function livePeers(snapshot: Snapshot): LivePeer[] {
+  const out: LivePeer[] = [];
+  for (const p of snapshot.protocols) {
+    if (isPreToken(p) || p.mcap_usd === null || p.tvl_usd <= 0) continue;
+    if (p.category !== null && WRAPPER_CATEGORIES.has(p.category)) continue;
+    const ratio = p.mcap_usd / p.tvl_usd;
+    if (!Number.isFinite(ratio) || ratio <= 0) continue;
+    out.push({ tvl_usd: p.tvl_usd, ratio });
+  }
+  return out;
+}
+
+const clampPeer = (v: number, model: ModelConstants): number =>
+  Math.min(model.peer_cap, Math.max(model.peer_floor, v));
+
+/**
+ * Category peer multiples, computed once from the snapshot's live set. Only
+ * categories with at least peer_min_peers live peers earn their own entry;
+ * thinner categories are priced per protocol by peerFor() instead.
+ */
 export function peerMultiples(snapshot: Snapshot, model: ModelConstants = MODEL): Map<string, PeerInfo> {
   const byCategory = new Map<string, number[]>();
   const all: number[] = [];
+  for (const lp of livePeers(snapshot)) all.push(lp.ratio);
   for (const p of snapshot.protocols) {
     if (isPreToken(p) || p.mcap_usd === null || p.tvl_usd <= 0) continue;
+    if (p.category !== null && WRAPPER_CATEGORIES.has(p.category)) continue;
     const ratio = p.mcap_usd / p.tvl_usd;
     if (!Number.isFinite(ratio) || ratio <= 0) continue;
-    all.push(ratio);
     const key = p.category ?? 'Other';
     const list = byCategory.get(key) ?? [];
     list.push(ratio);
     byCategory.set(key, list);
   }
-  const globalMedian = median(all);
-  const clampPeer = (v: number): number => Math.min(model.peer_cap, Math.max(model.peer_floor, v));
   const out = new Map<string, PeerInfo>();
   for (const [category, ratios] of byCategory) {
-    const useOwn = ratios.length >= model.peer_min_peers;
-    // When a category has too few live peers to trust, the multiple is the
-    // global live median and the peer count says so: it names the global set.
-    out.set(category, {
-      category,
-      multiple: round4(clampPeer(useOwn ? median(ratios) : globalMedian)),
-      peers: useOwn ? ratios.length : all.length,
-    });
+    if (ratios.length < model.peer_min_peers) continue;
+    out.set(category, { category, multiple: round4(clampPeer(median(ratios), model)), peers: ratios.length });
   }
-  out.set('__global__', { category: '__global__', multiple: round4(clampPeer(globalMedian)), peers: all.length });
+  out.set('__global__', { category: '__global__', multiple: round4(clampPeer(median(all), model)), peers: all.length });
   return out;
+}
+
+export type PeerBasis = 'category' | 'global';
+
+/**
+ * The multiple that prices one protocol, and the basis it came from:
+ * its category's own median when the category has at least peer_min_peers
+ * live peers in the cleaned pool, else the pool's global median.
+ */
+export function peerFor(
+  protocol: SnapshotProtocol,
+  peers: Map<string, PeerInfo>,
+  model: ModelConstants = MODEL,
+): PeerInfo & { basis: PeerBasis } {
+  const own = peers.get(protocol.category ?? 'Other');
+  if (own) return { ...own, basis: 'category' };
+  const g = peers.get('__global__')!;
+  return { ...g, basis: 'global' };
 }
 
 export function impliedValue(
@@ -253,9 +305,9 @@ export function impliedValue(
   asOf: string,
   peers: Map<string, PeerInfo>,
   model: ModelConstants = MODEL,
-): { implied: number; peer: PeerInfo; growthPct: number; growthMult: number; maturityMult: number; breadthMult: number; age: number | null } {
+): { implied: number; peer: PeerInfo & { basis: PeerBasis }; growthPct: number; growthMult: number; maturityMult: number; breadthMult: number; age: number | null } {
   const age = ageDays(asOf, protocol.listed_at);
-  const peer = peers.get(protocol.category ?? 'Other') ?? peers.get('__global__')!;
+  const peer = peerFor(protocol, peers, model);
   const rawGrowth = typeof protocol.change_7d === 'number' && Number.isFinite(protocol.change_7d) ? protocol.change_7d : 0;
   const growthPct = Math.min(model.growth_cap, Math.max(model.growth_floor, rawGrowth));
   const growthMult = 1 + (growthPct / 100) * model.growth_weight;
@@ -345,7 +397,7 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
       time: `10 minutes a week for ${hold} days`,
     },
     {
-      text: `Every Sunday, check ${p.name}'s own points, rewards or governance page from the link inside its app, claim only there, never pay anyone to claim, and log wallet, dates and transaction hashes in a farm sheet`,
+      text: `Every Sunday, check ${p.name}'s own points, rewards or governance page from the link inside its app, claim only there, never pay anyone to claim, and log wallet, dates and transaction hashes in a farm sheet. ${p.name} has been tracked with no token since ${p.listed_at ?? 'an unrecorded date'} across ${p.chains.length} chain${p.chains.length === 1 ? '' : 's'}, so also re-check its listing monthly in case a token record appears and this farm changes`,
       cost: 'nothing to check, never pay a claim fee',
       time: '10 minutes a week',
     },
@@ -384,6 +436,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
     model: {
       peer_multiple: s.peer.multiple,
       peer_peers: s.peer.peers,
+      peer_basis: s.peer.basis,
       growth_pct: s.growthPct,
       growth_multiplier: round4(s.growthMult),
       maturity_multiplier: round4(s.maturityMult),
@@ -416,16 +469,9 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
   const live = liveRows(snapshot);
   const peers = peerMultiples(snapshot, model);
   // The dashboard's methodology panel lists only categories whose multiple
-  // is genuinely their own (enough live peers), never a fallback category.
-  const liveCounts = new Map<string, number>();
-  for (const p of snapshot.protocols) {
-    if (isPreToken(p) || p.mcap_usd === null || p.tvl_usd <= 0) continue;
-    const key = p.category ?? 'Other';
-    liveCounts.set(key, (liveCounts.get(key) ?? 0) + 1);
-  }
+  // is genuinely their own; peerMultiples only creates entries for those.
   const peerList: PeerInfo[] = [...peers.values()]
-    .filter((x) => x.category !== '__global__' && (liveCounts.get(x.category) ?? 0) >= model.peer_min_peers)
-    .map((x) => ({ ...x, peers: liveCounts.get(x.category)! }))
+    .filter((x) => x.category !== '__global__')
     .sort((a, b) => b.peers - a.peers || (a.category < b.category ? -1 : 1))
     .slice(0, 12);
   const radar: RadarData = {
@@ -453,6 +499,8 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
       on_watchlist: r.on_watchlist,
       implied_value_usd: r.implied_value_usd,
       peer_multiple: r.model.peer_multiple,
+      peer_peers: r.model.peer_peers,
+      peer_basis: r.model.peer_basis,
       growth_multiplier: r.model.growth_multiplier,
       maturity_multiplier: r.model.maturity_multiplier,
       breadth_multiplier: r.model.breadth_multiplier,
