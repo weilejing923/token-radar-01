@@ -92,7 +92,7 @@
       { text: coreAction(p, capital, chain), cost: '$' + capital + ' of capital plus about $' + gas + ' of gas', time: '20 minutes to set up' },
       { text: secondAction(p, chain), cost: 'about $25-$50 of extra capital and $2 of gas', time: '15 minutes once' },
       { text: 'Repeat one small qualifying action on ' + p.name + ' every week and hold the main position at least ' + hold + ' days, so activity spans several weekly snapshots instead of a single day', cost: 'about $2 of gas a week, $' + capital + ' stays locked in the position', time: '10 minutes a week for ' + hold + ' days' },
-      { text: 'Every Sunday, check ' + p.name + "'s own points, rewards or governance page from the link inside its app, claim only there, never pay anyone to claim, and log wallet, dates and transaction hashes in a farm sheet", cost: 'nothing to check, never pay a claim fee', time: '10 minutes a week' }
+      { text: 'Every Sunday, check ' + p.name + "'s own points, rewards or governance page from the link inside its app, claim only there, never pay anyone to claim, and log wallet, dates and transaction hashes in a farm sheet. " + p.name + ' has been tracked with no token since ' + (p.listed_at || 'an unrecorded date') + ' across ' + (p.chains || []).length + ' chain' + ((p.chains || []).length === 1 ? '' : 's') + ', so also re-check its listing monthly in case a token record appears and this farm changes', cost: 'nothing to check, never pay a claim fee', time: '10 minutes a week' }
     ].map(stepText);
   }
 
@@ -150,7 +150,7 @@
       el('b', { text: 'How the ranking works: ' }),
       ' ', el('code', { text: 'implied = TVL \u00d7 peer multiple \u00d7 growth \u00d7 maturity \u00d7 breadth' }),
       ' Peer multiple is the median market-cap/TVL of live protocols in the same category, from this snapshot itself \u2014 ',
-      peerText, '. Growth clamps the 7-day TVL change to -50%\u2026+100% at 0.55 weight. Maturity rewards years tracked with no token on record (3-year cap). Breadth adds at most +15% for multi-chain reach. No name is hard-coded; open any row to see its own maths.');
+      peerText, '. The peer pool holds live operating protocols only: exchanges, bridges and staking wrappers never price anyone, the same classes this board refuses to rank. A category with too few live peers falls back to the pool median, and each row says which basis priced it. Growth clamps the 7-day TVL change to -50%\u2026+100% at 0.55 weight. Maturity rewards years tracked with no token on record (3-year cap). Breadth adds at most +15% for multi-chain reach. No name is hard-coded; open any row to see its own maths.');
   }
   function controls() {
     var cats = Array.from(new Set(DATA.rows.map(function (r) { return r.category || 'Other'; }))).sort();
@@ -189,13 +189,16 @@
   }
   function boardTable() {
     var rows = sorted(filtered());
+    var maxTvl = DATA.rows.reduce(function (m, r) { return Math.max(m, r.tvl_usd); }, 0);
     var body = rows.slice(0, 120).map(function (r) {
       var growth = el('td', { class: 'num ' + (r.change_7d === null ? '' : r.change_7d >= 0 ? 'up' : 'down'), text: fmtPct(r.change_7d) });
+      var bar = el('div', { class: 'bar' }, el('i', null));
+      bar.firstChild.style.width = Math.max(2, Math.round((r.tvl_usd / maxTvl) * 100)) + '%';
       var tr = el('tr', { onclick: function () { state.selected = r.slug; render(true); } },
         el('td', { class: 'rank', text: '#' + r.rank }),
         el('td', null, el('span', { class: 'name', text: r.name }), r.on_watchlist ? el('span', { class: 'badge', text: 'WATCHLIST' }) : null,
           el('div', { class: 'sub2', text: (r.category || 'Other') + ' \u00b7 ' + (r.chains || []).slice(0, 3).join(', ') })),
-        el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
+        el('td', { class: 'num' }, fmtUsd(r.tvl_usd), bar),
         growth,
         el('td', { class: 'num', text: fmtAge(r.age_days) }),
         el('td', { class: 'num', text: fmtUsd(r.implied_value_usd) }));
@@ -216,6 +219,15 @@
     return el('table', null,
       el('thead', null, el('tr', null, el('th', { text: 'Live-token protocol (market value, never ranked)' }), el('th', { class: 'num', text: 'TVL' }), el('th', { class: 'num', text: '7d' }), el('th', { class: 'num', text: 'Market cap' }))),
       el('tbody', null, body));
+  }
+  function whyLine(r) {
+    var basis = r.peer_basis === 'category'
+      ? 'the ' + r.peer_multiple.toFixed(2) + 'x median of ' + r.peer_peers + ' live ' + (r.category || 'Other') + ' peers in this snapshot'
+      : 'the ' + r.peer_multiple.toFixed(2) + 'x median of all ' + r.peer_peers + ' live operating protocols in the pool, because ' + (r.category || 'its category') + ' has too few live peers of its own';
+    return 'Why #' + r.rank + ': ' + fmtUsd(r.tvl_usd) + ' of TVL priced at ' + basis +
+      ', then adjusted \u00d7' + r.growth_multiplier.toFixed(2) + ' for its 7-day move, \u00d7' + r.maturity_multiplier.toFixed(2) +
+      ' for ' + fmtAge(r.age_days).replace(' no token', '') + ' tracked with no token, and \u00d7' + r.breadth_multiplier.toFixed(2) +
+      ' for reach across ' + (r.chains || []).length + ' chain' + ((r.chains || []).length === 1 ? '' : 's') + '.';
   }
   function detail() {
     if (!state.selected) return null;
@@ -238,6 +250,7 @@
         el('span', null, el('small', { text: 'Breadth' }), r.breadth_multiplier.toFixed(2) + 'x'),
         el('span', { class: 'op', text: '=' }),
         el('span', { class: 'res', text: fmtUsd(r.implied_value_usd) })),
+      el('p', { class: 'peers', text: whyLine(r) }),
       el('h3', { text: 'How to farm ' + r.name + ' (5 steps)' }),
       el('ol', { class: 'steps' }, steps),
       el('p', { class: 'peers', text: 'Safety: this radar records no token for ' + r.name + ' in the snapshot; that is DefiLlama\u2019s record, not proof none exists. Verify in the protocol\u2019s own app before depositing, and never pay anyone to claim an airdrop.' }));
@@ -255,6 +268,14 @@
     app.appendChild(el('p', { class: 'foot', text: 'Data: ' + DATA.source + '. Board shows the first 120 rows of the current filter; the full ranked board (' + DATA.board_size + ' rows) is in board.json. Implied values are a model\u2019s claim about what a launch would be worth if the record stayed as it is.' }));
     if (scrollDetail && d) d.scrollIntoView({ block: 'start' });
   }
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName) || '';
+    if (e.key === '/' && tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
+      var s = document.querySelector('input[type="search"]');
+      if (s) { e.preventDefault(); s.focus(); }
+    }
+    if (e.key === 'Escape' && state.selected) { state.selected = null; render(false); }
+  });
   (function initFromHash() {
     var h = window.location.hash.replace(/^#/, '');
     if (!h) return;
