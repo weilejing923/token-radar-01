@@ -87,7 +87,7 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 5,
 };
 
-export const MODEL_VERSION = 'radar-peer-3';
+export const MODEL_VERSION = 'radar-peer-4';
 
 export const LIVE_ROWS = 24;
 
@@ -117,6 +117,7 @@ export interface BoardRow {
     peer_multiple: number;
     peer_peers: number;
     peer_basis: 'category' | 'global';
+    confidence: 'high' | 'medium' | 'fallback';
     growth_pct: number;
     growth_multiplier: number;
     maturity_multiplier: number;
@@ -141,6 +142,7 @@ export interface RadarRow {
   peer_multiple: number;
   peer_peers: number;
   peer_basis: 'category' | 'global';
+  confidence: 'high' | 'medium' | 'fallback';
   growth_multiplier: number;
   maturity_multiplier: number;
   breadth_multiplier: number;
@@ -174,6 +176,7 @@ export interface RadarData {
   early_size: number;
   live_size: number;
   total_tvl_usd: number;
+  peer_pool_size: number;
   peers: PeerInfo[];
   rows: RadarRow[];
   live: LiveRow[];
@@ -285,6 +288,16 @@ export function peerMultiples(snapshot: Snapshot, model: ModelConstants = MODEL)
 export type PeerBasis = 'category' | 'global';
 
 /**
+ * How much to trust one row's multiple, from its peer sample alone:
+ * a category median over 8+ live peers is high, over 3-7 is medium, and
+ * the global fallback is labelled fallback, never dressed up as more.
+ */
+export function confidenceOf(peer: PeerInfo & { basis: PeerBasis }): 'high' | 'medium' | 'fallback' {
+  if (peer.basis === 'global') return 'fallback';
+  return peer.peers >= 8 ? 'high' : 'medium';
+}
+
+/**
  * The multiple that prices one protocol, and the basis it came from:
  * its category's own median when the category has at least peer_min_peers
  * live peers in the cleaned pool, else the pool's global median.
@@ -358,8 +371,14 @@ function secondAction(p: SnapshotProtocol, chain: string): string {
   const n = p.name;
   if (c.includes('lend') || c.includes('cdp')) return `Set a health-factor alert for the ${n} position and add $25 of collateral once, so the account shows risk management, not a single deposit`;
   if (c.includes('dex')) return `Provide $50 of liquidity to one ${n} pool on ${chain} for at least 7 days, separate from the trading wallet activity above`;
+  if (c.includes('derivative') || c.includes('perpetual')) return `Check the funding rate on ${n} before each weekly repeat and only trade when it is near neutral, so the farm does not bleed funding fees`;
   if (c.includes('curator') || c.includes('allocator') || c.includes('yield')) return `Split the deposit: keep 80% in the main ${n} vault and put 20% in a second ${n} vault on ${chain}, so usage spans more than one product`;
   if (c.includes('rwa')) return `Claim or compound the yield on the ${n} asset once after the first distribution date instead of withdrawing it`;
+  if (c.includes('index')) return `Hold the ${n} index position through one rebalance date instead of selling early, so the wallet records a full index cycle`;
+  if (c.includes('privacy')) return `Run one full shield-and-unshield cycle on ${n} a week apart, keeping both transaction hashes, so usage is a round trip and not a single deposit`;
+  if (c.includes('prediction')) return `Let one ${n} position settle and claim the outcome in the app instead of selling early, so the account shows a completed market cycle`;
+  if (c.includes('payments')) return `Make a second, smaller payment through ${n} to a different recipient a week later, so the wallet shows repeat use, not a one-off transfer`;
+  if (c.includes('insurance')) return `Renew or extend the ${n} cover once before it lapses, so the policy history shows continuity rather than a single purchase`;
   return `Use one second ${n} feature on ${chain} (a vote, a claim page visit with a signed message, or a small repeat deposit) so the wallet is not a one-transaction account`;
 }
 
@@ -437,6 +456,7 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       peer_multiple: s.peer.multiple,
       peer_peers: s.peer.peers,
       peer_basis: s.peer.basis,
+      confidence: confidenceOf(s.peer),
       growth_pct: s.growthPct,
       growth_multiplier: round4(s.growthMult),
       maturity_multiplier: round4(s.maturityMult),
@@ -485,6 +505,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
     early_size: board.filter((r) => !r.on_watchlist).length,
     live_size: live.length,
     total_tvl_usd: board.reduce((sum, r) => sum + r.tvl_usd, 0),
+    peer_pool_size: peers.get('__global__')?.peers ?? 0,
     peers: peerList,
     rows: board.map((r) => ({
       rank: r.rank,
@@ -501,6 +522,7 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): {
       peer_multiple: r.model.peer_multiple,
       peer_peers: r.model.peer_peers,
       peer_basis: r.model.peer_basis,
+      confidence: r.model.confidence,
       growth_multiplier: r.model.growth_multiplier,
       maturity_multiplier: r.model.maturity_multiplier,
       breadth_multiplier: r.model.breadth_multiplier,
