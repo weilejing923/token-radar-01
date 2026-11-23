@@ -196,11 +196,12 @@
   function boardTable() {
     var rows = sorted(filtered());
     var maxTvl = DATA.rows.reduce(function (m, r) { return Math.max(m, r.tvl_usd); }, 0);
-    var body = rows.slice(0, 120).map(function (r) {
+    var body = [];
+    rows.slice(0, 120).forEach(function (r) {
       var growth = el('td', { class: 'num ' + (r.change_7d === null ? '' : r.change_7d >= 0 ? 'up' : 'down'), text: fmtPct(r.change_7d) });
       var bar = el('div', { class: 'bar' }, el('i', null));
       bar.firstChild.style.width = Math.max(2, Math.round((r.tvl_usd / maxTvl) * 100)) + '%';
-      var tr = el('tr', { onclick: function () { state.selected = r.slug; render(true); } },
+      var tr = el('tr', { onclick: function () { state.selected = state.selected === r.slug ? null : r.slug; render(false); } },
         el('td', { class: 'rank', text: '#' + r.rank }),
         el('td', null, el('span', { class: 'name', text: r.name }), r.on_watchlist ? el('span', { class: 'badge', text: 'WATCHLIST' }) : null,
           el('span', { class: 'conf conf-' + r.confidence, text: r.confidence === 'high' ? 'CONF HIGH' : r.confidence === 'medium' ? 'CONF MED' : 'CONF FALLBACK' }),
@@ -209,7 +210,12 @@
         growth,
         el('td', { class: 'num', text: fmtAge(r.age_days) }),
         el('td', { class: 'num', text: fmtUsd(r.implied_value_usd) }));
-      return tr;
+      body.push(tr);
+      if (state.selected === r.slug) {
+        var cell = el('td', { colspan: '6', class: 'detail-cell' });
+        cell.appendChild(detailNode(r));
+        body.push(el('tr', { class: 'detail-row' }, cell));
+      }
     });
     return el('table', null,
       el('thead', null, el('tr', null, sortTh('rank', 'Rank'), sortTh('name', 'Protocol'), sortTh('tvl', 'TVL', true), sortTh('growth', '7d', true), sortTh('age', 'No-token age', true), sortTh('implied', 'Implied value', true))),
@@ -241,6 +247,15 @@
     var r = null;
     DATA.rows.forEach(function (x) { if (x.slug === state.selected) r = x; });
     if (!r) return null;
+    // When the selected row is on screen, its detail expands inline under
+    // that row (see boardTable) and the page never scrolls; the standalone
+    // section below is only for a selection that is not in the table view
+    // (for example a #p= link to a row the current filter hides).
+    var shown = state.tab === 'pre-token' && sorted(filtered()).slice(0, 120).some(function (x) { return x.slug === r.slug; });
+    if (shown) return null;
+    return detailNode(r);
+  }
+  function detailNode(r) {
     var steps = farmSteps(r).map(function (s) { return el('li', { text: s }); });
     return el('section', { class: 'detail', id: 'detail' },
       el('h2', { text: '#' + r.rank + ' ' + r.name }),
