@@ -9,7 +9,7 @@ rankable pre-token protocol by implied launch value, and renders a dark,
 filterable dashboard with a detail view and a concrete 5-step farm plan
 (capital, gas, time and hold period) for every protocol.
 
-The model (radar-peer-3, in `lib/model.ts`) prices each protocol against
+The model (radar-peer-4, in `lib/model.ts`) prices each protocol against
 its own category: implied = TVL x peer multiple (the median market-cap/TVL
 of live protocols in the same category, computed from the snapshot itself)
 x growth (7-day TVL change, clamped, 0.55 weight) x maturity (years tracked

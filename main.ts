@@ -1,7 +1,7 @@
 // Token Launch Radar — entry program (Node 22, standard library only).
 //
 // Reads the sealed snapshot at /input/snapshot.json (or --input), scores every
-// rankable pre-token protocol with lib/model.ts (peer-multiple model v2),
+// rankable pre-token protocol with lib/model.ts (peer-multiple model v4),
 // writes the ranked board to /output/board.json, writes the dashboard's data
 // as data.js beside the copied dashboard/, copies screenshots/, and finally
 // writes /output/dossier.json with buildDossier from vendor/makefun-board.ts.
