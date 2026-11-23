@@ -23,7 +23,11 @@ other rankable pre-token protocol (198 rows on the sealed snapshot);
 live-token protocols are shown separately at market value and never
 ranked. Press `/` to jump to search, `Esc` to close a detail view.
 
-The dashboard has three views. The ranked board is the main one. The
+The ranked board carries a category strip (protocol count, tracked TVL
+and the top name per category — click a card to filter the board to that
+category) and a confidence filter, so the board can be cut to only the
+rows priced from eight or more live peers in their own category. The
+dashboard has three views. The ranked board is the main one. The
 **Movers** view re-sorts the same board by the snapshot's 7-day TVL move —
 fastest inflow and fastest outflow side by side — and clicking a mover
 opens it on the board with its full maths and farm plan. The **Airdrop
