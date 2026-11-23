@@ -9,7 +9,7 @@
   var DATA = window.RADAR;
   if (!DATA) return;
   var app = document.getElementById('board');
-  var state = { q: '', category: 'all', chain: 'all', watch: false, tab: 'pre-token', sort: 'rank', dir: 1, selected: null };
+  var state = { q: '', category: 'all', chain: 'all', watch: false, tab: 'pre-token', sort: 'rank', dir: 1, selected: null, view: 'board' };
 
   function fmtUsd(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
@@ -158,6 +158,74 @@
       ' Peer multiple is the median market-cap/TVL of live protocols in the same category, from this snapshot itself \u2014 ',
       peerText, '. The peer pool holds ' + DATA.peer_pool_size + ' live operating protocols only: exchanges, bridges and staking wrappers never price anyone, the same classes this board refuses to rank. A category with too few live peers falls back to the pool median, and each row says which basis priced it and how much to trust it (confidence: high from 8+ own-category peers, medium from 3\u20137, fallback from the pool median). Growth clamps the 7-day TVL change to -50%\u2026+100% at 0.55 weight. Maturity rewards years tracked with no token on record (3-year cap). Breadth adds at most +15% for multi-chain reach. No name is hard-coded; open any row to see its own maths.');
   }
+  function viewTabs() {
+    function btn(id, label) {
+      return el('button', { type: 'button', 'aria-pressed': state.view === id ? 'true' : 'false', text: label, onclick: function () { state.view = id; render(false); } });
+    }
+    return el('nav', { class: 'views', 'aria-label': 'Views' },
+      btn('board', 'Ranked board'), btn('movers', 'Movers \u00b7 7d TVL'), btn('airdrop', 'Airdrop shortlist \u00b7 top 20'));
+  }
+  function jumpTo(slug) {
+    state.view = 'board'; state.tab = 'pre-token';
+    state.q = ''; state.category = 'all'; state.chain = 'all'; state.watch = false;
+    state.sort = 'rank'; state.dir = 1; state.selected = slug;
+    render(false);
+  }
+  function moverPanel(title, note, list) {
+    var body = list.map(function (r) {
+      return el('tr', { onclick: function () { jumpTo(r.slug); } },
+        el('td', { class: 'rank', text: '#' + r.rank }),
+        el('td', null, el('span', { class: 'name', text: r.name }), r.on_watchlist ? el('span', { class: 'badge', text: 'WATCHLIST' }) : null,
+          el('div', { class: 'sub2', text: (r.category || 'Other') })),
+        el('td', { class: 'num', text: fmtUsd(r.tvl_usd) }),
+        el('td', { class: 'num ' + (r.change_7d >= 0 ? 'up' : 'down'), text: fmtPct(r.change_7d) }),
+        el('td', { class: 'num', text: fmtUsd(r.implied_value_usd) }));
+    });
+    return el('section', { class: 'mpanel' },
+      el('h2', { text: title }),
+      el('p', { text: note }),
+      el('table', null,
+        el('thead', null, el('tr', null, el('th', { text: 'Board rank' }), el('th', { text: 'Protocol' }), el('th', { class: 'num', text: 'TVL' }), el('th', { class: 'num', text: '7d' }), el('th', { class: 'num', text: 'Implied' }))),
+        el('tbody', null, body)));
+  }
+  function moversView() {
+    var withChg = DATA.rows.filter(function (r) { return r.change_7d !== null; });
+    var gainers = withChg.slice().sort(function (a, b) { return b.change_7d - a.change_7d; }).slice(0, 12);
+    var losers = withChg.slice().sort(function (a, b) { return a.change_7d - b.change_7d; }).slice(0, 12);
+    return el('div', null,
+      el('p', { class: 'intro', text: 'The same ranked board, re-sorted by the snapshot\u2019s 7-day TVL move. Fast inflow into a protocol that still has no token on record is the radar\u2019s core early signal; fast outflow is the warning side. Click any row to open it on the board with its full maths and farm plan.' }),
+      el('div', { class: 'cols' },
+        moverPanel('Fastest TVL growth \u00b7 7 days', 'Pre-token protocols gaining TVL fastest in the snapshot window.', gainers),
+        moverPanel('Fastest TVL outflow \u00b7 7 days', 'Pre-token protocols losing TVL fastest \u2014 check the farm thesis before adding capital.', losers)));
+  }
+  function airdropView() {
+    var body = [];
+    DATA.rows.slice(0, 20).forEach(function (r) {
+      var tags = [];
+      if (r.age_days !== null && r.age_days >= 365) tags.push(el('span', { class: 'tag2 tag2-seasoned', text: 'SEASONED \u00b7 NO TOKEN' }));
+      if (r.change_7d !== null && r.change_7d >= 10) tags.push(el('span', { class: 'tag2 tag2-hot', text: 'FAST GROWTH' }));
+      var tr = el('tr', { onclick: function () { state.selected = state.selected === r.slug ? null : r.slug; render(false); } },
+        el('td', { class: 'rank', text: '#' + r.rank }),
+        el('td', null, el('span', { class: 'name', text: r.name }), r.on_watchlist ? el('span', { class: 'badge', text: 'WATCHLIST' }) : null,
+          el('span', { class: 'conf conf-' + r.confidence, text: r.confidence === 'high' ? 'CONF HIGH' : r.confidence === 'medium' ? 'CONF MED' : 'CONF FALLBACK' }), tags,
+          el('div', { class: 'sub2', text: (r.category || 'Other') + ' \u00b7 ' + (r.chains || []).slice(0, 3).join(', ') })),
+        el('td', { class: 'num' }, fmtUsd(r.tvl_usd)),
+        el('td', { class: 'num ' + (r.change_7d === null ? '' : r.change_7d >= 0 ? 'up' : 'down'), text: fmtPct(r.change_7d) }),
+        el('td', { class: 'num', text: fmtAge(r.age_days) }),
+        el('td', { class: 'num', text: fmtUsd(r.implied_value_usd) }));
+      body.push(tr);
+      if (state.selected === r.slug) {
+        var cell = el('td', { colspan: '6', class: 'detail-cell' });
+        cell.appendChild(detailNode(r));
+        body.push(el('tr', { class: 'detail-row' }, cell));
+      }
+    });
+    return el('section', null,
+      el('p', { class: 'intro', text: 'The working shortlist: the board\u2019s top 20 by implied value, tagged for the two patterns that matter most \u2014 seasoned protocols that have run for a year or more with no token on record, and names whose TVL is growing fast right now. Open any row for the full five-step farm plan with capital, gas and time.' }),
+      el('table', null,
+        el('thead', null, el('tr', null, el('th', { text: 'Rank' }), el('th', { text: 'Protocol' }), el('th', { class: 'num', text: 'TVL' }), el('th', { class: 'num', text: '7d' }), el('th', { class: 'num', text: 'No-token age' }), el('th', { class: 'num', text: 'Implied value' }))),
+        el('tbody', null, body)));
+  }
   function controls() {
     var cats = Array.from(new Set(DATA.rows.map(function (r) { return r.category || 'Other'; }))).sort();
     var chains = Array.from(new Set(DATA.rows.reduce(function (a, r) { return a.concat(r.chains || []); }, []))).sort();
@@ -285,11 +353,19 @@
     app.innerHTML = '';
     app.appendChild(header());
     app.appendChild(hero());
-    app.appendChild(method());
-    app.appendChild(controls());
-    app.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
-    var d = detail();
-    if (d) app.appendChild(d);
+    app.appendChild(viewTabs());
+    var d = null;
+    if (state.view === 'movers') {
+      app.appendChild(moversView());
+    } else if (state.view === 'airdrop') {
+      app.appendChild(airdropView());
+    } else {
+      app.appendChild(method());
+      app.appendChild(controls());
+      app.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
+      d = detail();
+      if (d) app.appendChild(d);
+    }
     app.appendChild(el('p', { class: 'foot', text: 'Data: ' + DATA.source + '. Board shows the first 120 rows of the current filter; the full ranked board (' + DATA.board_size + ' rows) is in board.json. Implied values are a model\u2019s claim about what a launch would be worth if the record stayed as it is.' }));
     if (scrollDetail && d) d.scrollIntoView({ block: 'start' });
   }
@@ -306,6 +382,7 @@
     if (!h) return;
     var p = new URLSearchParams(h);
     if (p.get('p')) state.selected = p.get('p');
+    if (p.get('view')) state.view = p.get('view');
     if (p.get('category')) state.category = p.get('category');
     if (p.get('watch')) state.watch = true;
     if (p.get('q')) state.q = p.get('q');

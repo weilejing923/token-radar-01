@@ -61,3 +61,15 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 @media(max-width:760px){.hero{grid-template-columns:1fr}.facts{grid-template-columns:1fr 1fr}th:nth-child(6),td:nth-child(6){display:none}}
 .bar { height: 3px; background: #16233c; border-radius: 2px; margin-top: 5px; overflow: hidden; }
 .bar i { display: block; height: 100%; background: #2dd4bf; border-radius: 2px; opacity: .75; }
+.views{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.views button{background:var(--panel);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:9px 16px;font-size:14px;cursor:pointer}
+.views button[aria-pressed=true]{background:var(--teal);color:#04201b;border-color:var(--teal);font-weight:700}
+.intro{color:var(--muted);font-size:14px;margin:14px 0 0;max-width:900px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;margin-top:14px}
+.mpanel{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px}
+.mpanel h2{margin:0 0 4px;font-size:16px}
+.mpanel p{color:var(--muted);font-size:13px;margin:0}
+.mpanel table{margin-top:10px}
+.tag2{display:inline-block;border-radius:999px;padding:0 7px;font-size:10.5px;font-weight:700;margin-left:7px;border:1px solid}
+.tag2-hot{color:#34d399;border-color:#34d39966;background:#34d39914}
+.tag2-seasoned{color:#c4b5fd;border-color:#c4b5fd55;background:#c4b5fd12}
