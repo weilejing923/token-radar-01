@@ -9,7 +9,7 @@
   var DATA = window.RADAR;
   if (!DATA) return;
   var app = document.getElementById('board');
-  var state = { q: '', category: 'all', chain: 'all', watch: false, tab: 'pre-token', sort: 'rank', dir: 1, selected: null, view: 'board' };
+  var state = { q: '', category: 'all', chain: 'all', watch: false, tab: 'pre-token', sort: 'rank', dir: 1, selected: null, view: 'board', conf: 'all' };
 
   function fmtUsd(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
@@ -106,6 +106,7 @@
     var q = state.q.trim().toLowerCase();
     return DATA.rows.filter(function (r) {
       if (state.watch && !r.on_watchlist) return false;
+      if (state.conf !== 'all' && r.confidence !== state.conf) return false;
       if (state.category !== 'all' && (r.category || 'Other') !== state.category) return false;
       if (state.chain !== 'all' && (r.chains || []).indexOf(state.chain) < 0) return false;
       if (!q) return true;
@@ -167,9 +168,30 @@
   }
   function jumpTo(slug) {
     state.view = 'board'; state.tab = 'pre-token';
-    state.q = ''; state.category = 'all'; state.chain = 'all'; state.watch = false;
+    state.q = ''; state.category = 'all'; state.chain = 'all'; state.watch = false; state.conf = 'all';
     state.sort = 'rank'; state.dir = 1; state.selected = slug;
     render(false);
+  }
+  function categoryStrip() {
+    var byCat = {};
+    DATA.rows.forEach(function (r) {
+      var c = r.category || 'Other';
+      if (!byCat[c]) byCat[c] = { cat: c, count: 0, tvl: 0, top: r };
+      byCat[c].count += 1;
+      byCat[c].tvl += r.tvl_usd;
+      if (r.implied_value_usd > byCat[c].top.implied_value_usd) byCat[c].top = r;
+    });
+    var list = Object.keys(byCat).map(function (k) { return byCat[k]; })
+      .sort(function (a, b) { return b.tvl - a.tvl; }).slice(0, 8);
+    return el('div', { class: 'catstrip', 'aria-label': 'Board by category' },
+      list.map(function (c) {
+        return el('button', { type: 'button', class: 'catchip', 'aria-pressed': state.category === c.cat ? 'true' : 'false', onclick: function () {
+          state.category = state.category === c.cat ? 'all' : c.cat; render(false);
+        } },
+          el('b', { text: c.cat }),
+          el('span', { text: c.count + ' protocols \u00b7 ' + fmtUsd(c.tvl) + ' TVL' }),
+          el('span', { text: 'Top: ' + c.top.name + ' ' + fmtUsd(c.top.implied_value_usd) }));
+      }));
   }
   function moverPanel(title, note, list) {
     var body = list.map(function (r) {
@@ -233,7 +255,7 @@
     search.addEventListener('input', function () { state.q = search.value; render(false); });
     function select(id, values, current, onchange) {
       var s = el('select', { id: id, 'aria-label': id },
-        el('option', { value: 'all', text: id === 'category' ? 'All categories' : 'All chains' }),
+        el('option', { value: 'all', text: id === 'category' ? 'All categories' : id === 'confidence' ? 'All confidence' : 'All chains' }),
         values.map(function (v) { var o = el('option', { value: v, text: v }); if (v === current) o.setAttribute('selected', 'selected'); return o; }));
       s.addEventListener('change', function () { onchange(s.value); render(false); });
       return s;
@@ -249,6 +271,7 @@
       el('div', { class: 'field' }, el('label', { text: 'Search' }), search),
       el('div', { class: 'field' }, el('label', { text: 'Category' }), select('category', cats, state.category, function (v) { state.category = v; })),
       el('div', { class: 'field' }, el('label', { text: 'Chain' }), select('chain', chains, state.chain, function (v) { state.chain = v; })),
+      el('div', { class: 'field' }, el('label', { text: 'Confidence' }), select('confidence', ['high', 'medium', 'fallback'], state.conf, function (v) { state.conf = v; })),
       el('div', { class: 'field' }, el('span', { class: 'sub', text: 'Board' }), el('div', { class: 'tabs' }, pre, live)),
       el('div', { class: 'field' }, el('span', { class: 'sub', text: 'Filter' }), watch),
       el('span', { class: 'count', text: state.tab === 'pre-token' ? filtered().length + ' rows shown' : DATA.live.length + ' live protocols' }));
@@ -361,6 +384,7 @@
       app.appendChild(airdropView());
     } else {
       app.appendChild(method());
+      app.appendChild(categoryStrip());
       app.appendChild(controls());
       app.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
       d = detail();
@@ -383,6 +407,7 @@
     var p = new URLSearchParams(h);
     if (p.get('p')) state.selected = p.get('p');
     if (p.get('view')) state.view = p.get('view');
+    if (p.get('conf')) state.conf = p.get('conf');
     if (p.get('category')) state.category = p.get('category');
     if (p.get('watch')) state.watch = true;
     if (p.get('q')) state.q = p.get('q');
