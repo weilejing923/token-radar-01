@@ -76,8 +76,14 @@
     var c = (p.category || '').toLowerCase(), n = p.name;
     if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0) return 'Set a health-factor alert for the ' + n + ' position and add $25 of collateral once, so the account shows risk management, not a single deposit';
     if (c.indexOf('dex') >= 0) return 'Provide $50 of liquidity to one ' + n + ' pool on ' + chain + ' for at least 7 days, separate from the trading wallet activity above';
+    if (c.indexOf('derivative') >= 0 || c.indexOf('perpetual') >= 0) return 'Check the funding rate on ' + n + ' before each weekly repeat and only trade when it is near neutral, so the farm does not bleed funding fees';
     if (c.indexOf('curator') >= 0 || c.indexOf('allocator') >= 0 || c.indexOf('yield') >= 0) return 'Split the deposit: keep 80% in the main ' + n + ' vault and put 20% in a second ' + n + ' vault on ' + chain + ', so usage spans more than one product';
     if (c.indexOf('rwa') >= 0) return 'Claim or compound the yield on the ' + n + ' asset once after the first distribution date instead of withdrawing it';
+    if (c.indexOf('index') >= 0) return 'Hold the ' + n + ' index position through one rebalance date instead of selling early, so the wallet records a full index cycle';
+    if (c.indexOf('privacy') >= 0) return 'Run one full shield-and-unshield cycle on ' + n + ' a week apart, keeping both transaction hashes, so usage is a round trip and not a single deposit';
+    if (c.indexOf('prediction') >= 0) return 'Let one ' + n + ' position settle and claim the outcome in the app instead of selling early, so the account shows a completed market cycle';
+    if (c.indexOf('payments') >= 0) return 'Make a second, smaller payment through ' + n + ' to a different recipient a week later, so the wallet shows repeat use, not a one-off transfer';
+    if (c.indexOf('insurance') >= 0) return 'Renew or extend the ' + n + ' cover once before it lapses, so the policy history shows continuity rather than a single purchase';
     return 'Use one second ' + n + ' feature on ' + chain + ' (a vote, a claim page visit with a signed message, or a small repeat deposit) so the wallet is not a one-transaction account';
   }
   function stepText(s) {
@@ -150,7 +156,7 @@
       el('b', { text: 'How the ranking works: ' }),
       ' ', el('code', { text: 'implied = TVL \u00d7 peer multiple \u00d7 growth \u00d7 maturity \u00d7 breadth' }),
       ' Peer multiple is the median market-cap/TVL of live protocols in the same category, from this snapshot itself \u2014 ',
-      peerText, '. The peer pool holds live operating protocols only: exchanges, bridges and staking wrappers never price anyone, the same classes this board refuses to rank. A category with too few live peers falls back to the pool median, and each row says which basis priced it. Growth clamps the 7-day TVL change to -50%\u2026+100% at 0.55 weight. Maturity rewards years tracked with no token on record (3-year cap). Breadth adds at most +15% for multi-chain reach. No name is hard-coded; open any row to see its own maths.');
+      peerText, '. The peer pool holds ' + DATA.peer_pool_size + ' live operating protocols only: exchanges, bridges and staking wrappers never price anyone, the same classes this board refuses to rank. A category with too few live peers falls back to the pool median, and each row says which basis priced it and how much to trust it (confidence: high from 8+ own-category peers, medium from 3\u20137, fallback from the pool median). Growth clamps the 7-day TVL change to -50%\u2026+100% at 0.55 weight. Maturity rewards years tracked with no token on record (3-year cap). Breadth adds at most +15% for multi-chain reach. No name is hard-coded; open any row to see its own maths.');
   }
   function controls() {
     var cats = Array.from(new Set(DATA.rows.map(function (r) { return r.category || 'Other'; }))).sort();
@@ -197,6 +203,7 @@
       var tr = el('tr', { onclick: function () { state.selected = r.slug; render(true); } },
         el('td', { class: 'rank', text: '#' + r.rank }),
         el('td', null, el('span', { class: 'name', text: r.name }), r.on_watchlist ? el('span', { class: 'badge', text: 'WATCHLIST' }) : null,
+          el('span', { class: 'conf conf-' + r.confidence, text: r.confidence === 'high' ? 'CONF HIGH' : r.confidence === 'medium' ? 'CONF MED' : 'CONF FALLBACK' }),
           el('div', { class: 'sub2', text: (r.category || 'Other') + ' \u00b7 ' + (r.chains || []).slice(0, 3).join(', ') })),
         el('td', { class: 'num' }, fmtUsd(r.tvl_usd), bar),
         growth,
@@ -251,6 +258,9 @@
         el('span', { class: 'op', text: '=' }),
         el('span', { class: 'res', text: fmtUsd(r.implied_value_usd) })),
       el('p', { class: 'peers', text: whyLine(r) }),
+      el('p', { class: 'peers', text: 'Pricing confidence: ' + r.confidence + (r.confidence === 'fallback'
+        ? ' \u2014 this row is priced from the pool median because its category has too few live peers of its own, so treat the figure as rougher than a category-priced row.'
+        : ' \u2014 this row\u2019s multiple is the median of ' + r.peer_peers + ' live peers in its own category.') }),
       el('h3', { text: 'How to farm ' + r.name + ' (5 steps)' }),
       el('ol', { class: 'steps' }, steps),
       el('p', { class: 'peers', text: 'Safety: this radar records no token for ' + r.name + ' in the snapshot; that is DefiLlama\u2019s record, not proof none exists. Verify in the protocol\u2019s own app before depositing, and never pay anyone to claim an airdrop.' }));

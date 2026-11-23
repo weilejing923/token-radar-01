@@ -38,6 +38,10 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .name{font-weight:700}
 .sub2{color:var(--muted);font-size:12.5px}
 .badge{display:inline-block;background:#fbbf2422;color:var(--amber);border:1px solid #fbbf2455;border-radius:999px;padding:0 8px;font-size:11.5px;font-weight:700;margin-left:7px}
+.conf{display:inline-block;border-radius:999px;padding:0 7px;font-size:10.5px;font-weight:700;margin-left:7px;border:1px solid}
+.conf-high{color:#2dd4bf;border-color:#2dd4bf66;background:#2dd4bf14}
+.conf-medium{color:#93c5fd;border-color:#93c5fd55;background:#93c5fd12}
+.conf-fallback{color:#fca5a5;border-color:#fca5a555;background:#fca5a512}
 .up{color:var(--green)}.down{color:var(--red)}
 .detail{margin-top:16px;background:var(--panel);border:1px solid var(--teal-dark);border-radius:var(--radius);padding:20px 22px}
 .detail h2{margin:0 0 4px;font-size:22px}
